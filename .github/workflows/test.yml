@@ -1,0 +1,61 @@
+name: CI Pipeline
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        if: ${{ hashFiles('package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml') != '' }}
+        shell: bash
+        run: npm ci
+
+      - name: Lint
+        if: ${{ hashFiles('package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml') != '' }}
+        shell: bash
+        run: npm run lint
+
+      - name: Build or Type Check
+        if: ${{ hashFiles('package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml') != '' }}
+        shell: bash
+        run: npm run build
+
+      - name: Test
+        if: ${{ hashFiles('package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml') != '' }}
+        shell: bash
+        run: npm test
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          MATRIX_NODE_VERSION: ${{ matrix.node-version }}
+        run: |
+          if [ -f package.json ]; then
+            printf 'Node %s: package present; lint, build, and tests were run or skipped by the package manifest check.\n' "$MATRIX_NODE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'Node %s: no npm manifest found; npm steps skipped.\n' "$MATRIX_NODE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          fi
